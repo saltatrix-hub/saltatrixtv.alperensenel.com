@@ -19,6 +19,7 @@ export interface Channel {
   platform?: string
   year?: string
   duration?: string
+  xtreamId?: string | number
   seriesInfoUrl?: string
   seriesBaseUrl?: string
   parentId?: string

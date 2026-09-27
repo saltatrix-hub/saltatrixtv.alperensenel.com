@@ -6,7 +6,7 @@ import { SourceModal } from './components/SourceModal'
 import { UpdateBanner } from './components/UpdateBanner'
 import { categoryColors, demoChannels } from './data'
 import { enrichChannelLogos } from './lib/logos'
-import { resolveSeriesEpisode } from './lib/xtream'
+import { fetchSeriesMetadata, inferXtreamCredentials, loadXtream, repairXtreamSeriesMetadata, resolveSeriesEpisode } from './lib/xtream'
 import type { Channel, ContentType, WatchProgress } from './types'
 
 type Section = 'home' | 'live' | 'movies' | 'series' | 'favorites'
@@ -54,7 +54,7 @@ const readProgress = (): Record<string, WatchProgress> => {
 }
 
 function App() {
-  const [channels, setChannels] = useState<Channel[]>(() => { try { return JSON.parse(localStorage.getItem('saltatrix-tv-channels') || 'null') || demoChannels } catch { return demoChannels } })
+  const [channels, setChannels] = useState<Channel[]>(() => { try { return repairXtreamSeriesMetadata(JSON.parse(localStorage.getItem('saltatrix-tv-channels') || 'null') || demoChannels) } catch { return demoChannels } })
   const [sourceName, setSourceName] = useState(() => localStorage.getItem('saltatrix-tv-source') || 'Saltatrix Demo')
   const [section, setSection] = useState<Section>('home')
   const [category, setCategory] = useState('Tümü')
@@ -67,9 +67,27 @@ function App() {
   const [sidebar, setSidebar] = useState(false)
   const [toast, setToast] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const metadataRequests = useRef(new Set<string>())
+  const catalogRefreshAttempted = useRef(false)
 
   useEffect(() => localStorage.setItem('saltatrix-tv-favorites', JSON.stringify(favorites)), [favorites])
   useEffect(() => localStorage.setItem(progressKey, JSON.stringify(watchProgress)), [watchProgress])
+  useEffect(() => { if (sourceName !== 'Saltatrix Demo') localStorage.setItem('saltatrix-tv-channels', JSON.stringify(channels)) }, [channels, sourceName])
+  useEffect(() => {
+    if (catalogRefreshAttempted.current || sourceName === 'Saltatrix Demo') return
+    const series = channels.filter((channel) => channel.type === 'series')
+    const ids = new Set(series.map((channel) => String(channel.xtreamId ?? channel.id.match(/^xc-series-(.+)$/)?.[1] ?? '')))
+    if (series.length < 2 || ids.size > 1) return
+    const credentials = inferXtreamCredentials(channels)
+    if (!credentials) return
+    catalogRefreshAttempted.current = true
+    setToast('Dizi kataloğu otomatik onarılıyor…')
+    loadXtream({ ...credentials, name: sourceName }).then((items) => {
+      setChannels(repairXtreamSeriesMetadata(items))
+      metadataRequests.current.clear()
+      setToast('Dizi kataloğu güncellendi')
+    }).catch(() => setToast('Dizi kataloğu yenilenemedi. Kaynağı yeniden bağlayın.'))
+  }, [channels, sourceName])
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 2600); return () => clearTimeout(timer) }, [toast])
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -152,15 +170,27 @@ function App() {
       return true
     })
   }, [catalogChannels, searchIndex, typeFilter, section, favorites, category, platformFilter, query])
+  useEffect(() => {
+    if (section !== 'series') return
+    const missing = visible.filter((channel) => channel.type === 'series' && !channel.logo && channel.seriesInfoUrl && !metadataRequests.current.has(channel.id)).slice(0, 24)
+    if (!missing.length) return
+    missing.forEach((channel) => metadataRequests.current.add(channel.id))
+    Promise.all(missing.map(async (channel) => ({ id: channel.id, metadata: await fetchSeriesMetadata(channel).catch((): Partial<Channel> => ({})) }))).then((results) => {
+      const updates = new Map(results.map((result) => [result.id, result.metadata]))
+      if (![...updates.values()].some((metadata) => metadata.logo)) return
+      setChannels((current) => current.map((channel) => updates.has(channel.id) ? { ...channel, ...updates.get(channel.id) } : channel))
+    })
+  }, [section, visible])
   const selectedPlatform = seriesPlatforms.find((item) => item.key === platformFilter)
   const continueWatching = useMemo(() => Object.values(watchProgress)
     .filter((item) => item.duration > 0 && item.position > 5 && item.position < item.duration - 15)
     .sort((a, b) => b.updatedAt - a.updatedAt), [watchProgress])
 
   const loadSource = (items: Channel[], name: string) => {
-    setChannels(items); setSourceName(name); setShowSource(false); setSection('live'); setCategory('Tümü'); setPlatformFilter('all'); setToast(`${items.length} içerik başarıyla eklendi`)
-    localStorage.setItem('saltatrix-tv-channels', JSON.stringify(items)); localStorage.setItem('saltatrix-tv-source', name)
-    enrichChannelLogos(items).then((enriched) => {
+    const repairedItems = repairXtreamSeriesMetadata(items)
+    setChannels(repairedItems); setSourceName(name); setShowSource(false); setSection('live'); setCategory('Tümü'); setPlatformFilter('all'); setToast(`${items.length} içerik başarıyla eklendi`)
+    localStorage.setItem('saltatrix-tv-channels', JSON.stringify(repairedItems)); localStorage.setItem('saltatrix-tv-source', name)
+    enrichChannelLogos(repairedItems).then((enriched) => {
       setChannels(enriched)
       localStorage.setItem('saltatrix-tv-channels', JSON.stringify(enriched))
     }).catch(() => undefined)
