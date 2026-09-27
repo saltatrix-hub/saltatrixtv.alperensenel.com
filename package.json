@@ -1,0 +1,58 @@
+{
+  "name": "saltatrix-tv",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && vite preview",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "desktop": "npm run build && electron .",
+    "desktop:build": "npm run build && electron-builder --win nsis",
+    "deploy": "npm run build && wrangler pages deploy ./dist --project-name=saltatrix-tv --branch=main"
+  },
+  "main": "electron/main.cjs",
+  "description": "Modern, hızlı ve sade web/Windows IPTV oynatıcı.",
+  "author": "Hüseyin Alperen Şenel",
+  "license": "MIT",
+  "homepage": "https://saltatrixtv.alperensenel.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saltatrix-hub/saltatrixtv.alperensenel.com.git"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "hls.js": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "^8.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  },
+  "build": {
+    "appId": "com.alperensenel.saltatrixtv",
+    "productName": "Saltatrix TV",
+    "asar": true,
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico",
+      "artifactName": "Saltatrix-TV-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Saltatrix TV"
+    }
+  }
+}
