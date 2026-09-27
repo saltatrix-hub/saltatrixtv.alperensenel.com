@@ -1,7 +1,7 @@
 {
   "name": "saltatrix-tv",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "npm run build && vite preview",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.1.1",
+    "electron-updater": "^6.8.9",
     "hls.js": "latest",
     "lucide-react": "latest",
     "react": "latest",
@@ -38,10 +39,31 @@
     "appId": "com.alperensenel.saltatrixtv",
     "productName": "Saltatrix TV",
     "asar": true,
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "saltatrix-hub",
+        "repo": "saltatrixtv.alperensenel.com",
+        "releaseType": "release"
+      }
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico",
       "artifactName": "Saltatrix-TV-Setup-${version}.${ext}"
     },

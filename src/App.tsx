@@ -3,6 +3,7 @@ import { Bell, Check, ChevronDown, Clapperboard, Compass, Film, Heart, Home, Lis
 import { ChannelCard } from './components/ChannelCard'
 import { Player } from './components/Player'
 import { SourceModal } from './components/SourceModal'
+import { UpdateBanner } from './components/UpdateBanner'
 import { categoryColors, demoChannels } from './data'
 import { enrichChannelLogos } from './lib/logos'
 import { resolveSeriesEpisode } from './lib/xtream'
@@ -173,6 +174,7 @@ function App() {
     </main>
     {selected && <Player channel={selected} resumeAt={watchProgress[selected.id]?.position || 0} onProgress={saveProgress} onClose={() => setSelected(null)} onNext={playNext}/>}
     {showSource && <SourceModal onClose={() => setShowSource(false)} onLoaded={loadSource}/>} 
+    <UpdateBanner/>
     {toast && <div className="toast"><Check/>{toast}</div>}
   </div>
 }
