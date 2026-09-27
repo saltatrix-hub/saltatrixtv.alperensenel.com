@@ -39,6 +39,14 @@ Kurulum dosyası `release/` klasöründe oluşturulur.
 
 > Proje yolunda `#` karakteri bulunduğu için `dev` komutu önce üretim paketini oluşturur, sonra yerel önizleme sunucusunu başlatır. Kod değişikliğinden sonra komutu yeniden başlatın.
 
+## Web yayını
+
+```bash
+npm run deploy
+```
+
+Statik uygulama Cloudflare Workers üzerinden `saltatrixtv.alperensenel.com` özel alan adına dağıtılır.
+
 ## Notlar
 
 - Uygulama yayın veya abonelik sağlamaz; yalnızca kullanıcının yetkili olduğu kaynakları oynatır.

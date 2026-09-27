@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "desktop:build": "npm run build && electron-builder --win nsis",
-    "deploy": "npm run build && wrangler pages deploy ./dist --project-name=saltatrix-tv --branch=main"
+    "deploy": "npm run build && wrangler deploy"
   },
   "main": "electron/main.cjs",
   "description": "Modern, hızlı ve sade web/Windows IPTV oynatıcı.",
