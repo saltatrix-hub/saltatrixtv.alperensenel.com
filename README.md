@@ -16,6 +16,7 @@ Sade ve akıcı bir arayüze sahip web ve Windows IPTV oynatıcı.
 - HLS canlı yayın oynatma, ses, tam ekran ve sonraki kanal kontrolleri
 - Masaüstü, tablet ve mobil uyumlu arayüz
 - Windows için kurulabilir masaüstü uygulaması
+- Windows sürümünde CORS sınırlaması olmayan doğrudan IPTV bağlantısı
 
 ## Çalıştırma
 
