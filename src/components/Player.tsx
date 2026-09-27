@@ -7,7 +7,11 @@ interface Props {
   channel: Channel
   resumeAt: number
   fullscreen: boolean
+  autoPlay: boolean
+  controlHideSeconds: 3 | 5 | 8
+  initialVolume: number
   onFullscreenChange: (enabled: boolean) => void
+  onVolumeChange: (volume: number) => void
   onClose: () => void
   onNext: () => void
   onProgress: (channel: Channel, position: number, duration: number) => void
@@ -21,7 +25,7 @@ const formatTime = (seconds: number) => {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
-export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onClose, onNext, onProgress }: Props) {
+export function Player({ channel, resumeAt, fullscreen, autoPlay, controlHideSeconds, initialVolume, onFullscreenChange, onVolumeChange, onClose, onNext, onProgress }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedRef = useRef(0)
@@ -29,7 +33,7 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
   const [playing, setPlaying] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [muted, setMuted] = useState(false)
-  const [volume, setVolume] = useState(1)
+  const [volume, setVolume] = useState(initialVolume)
   const [error, setError] = useState('')
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -59,7 +63,7 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
         if (hls && hls.audioTracks.length > 0 && hls.audioTrack < 0) hls.audioTrack = 0
         video.muted = muted
         video.volume = volume
-        video.play().catch(() => undefined)
+        if (autoPlay) video.play().catch(() => undefined)
       })
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
         if (hls && hls.audioTracks.length > 0 && hls.audioTrack < 0) hls.audioTrack = 0
@@ -67,13 +71,13 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
       hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setError('Yayın şu anda oynatılamıyor.') })
     } else {
       video.src = channel.url
-      video.play().catch(() => undefined)
+      if (autoPlay) video.play().catch(() => undefined)
     }
     return () => {
       if (!isLive && Number.isFinite(video.duration) && video.currentTime > 0) onProgress(channel, video.currentTime, video.duration)
       hls?.destroy(); video.removeAttribute('src'); video.load()
     }
-  }, [channel, isLive, onProgress])
+  }, [channel, isLive, autoPlay, onProgress])
 
   useEffect(() => {
     const video = videoRef.current
@@ -109,7 +113,7 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
     if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
     controlsTimerRef.current = setTimeout(() => {
       if (fullscreen && videoRef.current && !videoRef.current.paused) setControlsVisible(false)
-    }, 5000)
+    }, controlHideSeconds * 1000)
   }
   const seekBy = (seconds: number) => {
     const video = videoRef.current
@@ -120,8 +124,8 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
   const keyboardControls = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowLeft') { event.preventDefault(); seekBy(-10) }
     else if (event.key === 'ArrowRight') { event.preventDefault(); seekBy(10) }
-    else if (event.key === 'ArrowUp') { event.preventDefault(); setMuted(false); setVolume((value) => Math.min(1, value + .1)); revealControls() }
-    else if (event.key === 'ArrowDown') { event.preventDefault(); setVolume((value) => Math.max(0, value - .1)); revealControls() }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setMuted(false); setVolume((value) => { const next = Math.min(1, value + .1); onVolumeChange(next); return next }); revealControls() }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setVolume((value) => { const next = Math.max(0, value - .1); onVolumeChange(next); return next }); revealControls() }
     else if (event.key === ' ' || event.key.toLowerCase() === 'k') { event.preventDefault(); toggle(); revealControls() }
     else if (event.key.toLowerCase() === 'm') { setMuted((value) => !value); revealControls() }
   }
@@ -146,7 +150,7 @@ export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onCl
         {!isLive && <button onClick={() => seekBy(10)} aria-label="10 saniye ileri"><RotateCw/><small>10</small></button>}
         <button onClick={onNext}><SkipForward fill="currentColor"/></button>
         <button onClick={() => setMuted((value) => !value)} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>{muted || volume === 0 ? <VolumeX/> : <Volume2/>}</button>
-        <input className="volume-slider" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); setMuted(next === 0) }}/>
+        <input className="volume-slider" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); setMuted(next === 0); onVolumeChange(next) }}/>
         {!isLive && <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>}
         <div className="control-spacer"/>
         <button><Cast/></button>

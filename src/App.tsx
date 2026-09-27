@@ -74,7 +74,7 @@ function App() {
   const [showSource, setShowSource] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
-  const [preferences, setPreferences] = useState<UserPreferences>(() => readStored(preferencesKey, { fontSize: 'large', autoFullscreen: true }))
+  const [preferences, setPreferences] = useState<UserPreferences>(() => readStored(preferencesKey, { fontSize: 'large', autoFullscreen: true, autoPlay: true, rememberProgress: true, controlHideSeconds: 5, defaultVolume: 1 }))
   const [profile, setProfile] = useState<UserProfile>(() => readStored(profileKey, { name: 'İyi seyirler' }))
   const [sidebar, setSidebar] = useState(false)
   const [toast, setToast] = useState('')
@@ -240,14 +240,14 @@ function App() {
     void playChannel(visible[(Math.max(index, 0) + 1) % visible.length], true)
   }
   const saveProgress = useCallback((channel: Channel, position: number, duration: number) => {
-    if (channel.type === 'live' || !Number.isFinite(duration) || duration <= 0) return
+    if (!preferences.rememberProgress || channel.type === 'live' || !Number.isFinite(duration) || duration <= 0) return
     setWatchProgress((previous) => {
       const next = { ...previous }
       if (position >= duration - 15) delete next[channel.id]
       else next[channel.id] = { channel, position, duration, updatedAt: Date.now() }
       return next
     })
-  }, [])
+  }, [preferences.rememberProgress])
 
   const profileInitials = profile.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('tr-TR') || 'ST'
 
@@ -266,7 +266,7 @@ function App() {
       </div>)}</nav>
       <div className="side-label">KÜTÜPHANE</div>
       <button className="source-card" onClick={() => setShowSource(true)}><span><Tv/></span><div><small>Aktif liste</small><b>{sourceName}</b></div><ChevronDown/></button>
-      <div className="sidebar-bottom"><button onClick={() => setShowSettings(true)}><Settings/><span>Ayarlar</span></button><button className="profile" onClick={() => setShowProfile(true)}><span className="profile-avatar-small">{profileInitials}</span><span><b>{profile.name}</b><small>Kişisel profil</small></span><MoreHorizontal/></button></div>
+      <div className="sidebar-bottom"><button type="button" aria-label="Ayarları aç" onClick={() => { setShowSettings(true); setSidebar(false) }}><Settings/><span>Ayarlar</span></button><button type="button" className="profile" onClick={() => { setShowProfile(true); setSidebar(false) }}><span className="profile-avatar-small">{profileInitials}</span><span><b>{profile.name}</b><small>Kişisel profil</small></span><MoreHorizontal/></button></div>
     </aside>
     {sidebar && <div className="sidebar-shade" onClick={() => setSidebar(false)}/>} 
     <main>
@@ -288,8 +288,12 @@ function App() {
     </main>
     {selected && <Player
       channel={selected}
-      resumeAt={watchProgress[selected.id]?.position || 0}
+      resumeAt={preferences.rememberProgress ? watchProgress[selected.id]?.position || 0 : 0}
       fullscreen={playerFullscreen}
+      autoPlay={preferences.autoPlay}
+      controlHideSeconds={preferences.controlHideSeconds}
+      initialVolume={preferences.defaultVolume}
+      onVolumeChange={(volume) => setPreferences((current) => ({ ...current, defaultVolume: volume }))}
       onFullscreenChange={changeFullscreen}
       onProgress={saveProgress}
       onClose={closePlayer}
