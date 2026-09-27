@@ -49,6 +49,7 @@ function App() {
   const [sourceName, setSourceName] = useState(() => localStorage.getItem('saltatrix-tv-source') || 'Saltatrix Demo')
   const [section, setSection] = useState('Ana Sayfa')
   const [category, setCategory] = useState('Tümü')
+  const [platformFilter, setPlatformFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('saltatrix-tv-favorites') || '[]'))
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(readProgress)
@@ -83,7 +84,15 @@ function App() {
 
   const typeFilter: ContentType | null = section === 'Canlı TV' ? 'live' : section === 'Filmler' ? 'movie' : section === 'Diziler' ? 'series' : null
   const categories = useMemo(() => ['Tümü', ...Array.from(new Set(channels.filter((item) => !typeFilter || item.type === typeFilter).map((item) => item.category))).slice(0, 14)], [channels, typeFilter])
-  const seriesPlatforms = useMemo(() => Array.from(new Set(channels.filter((item) => item.type === 'series').map((item) => item.platform || item.category))).slice(0, 12), [channels])
+  const seriesPlatforms = useMemo(() => {
+    const unique = new Map<string, { label: string; image: string }>()
+    channels.filter((item) => item.type === 'series').forEach((item) => {
+      const info = platformInfo(item.platform || item.category)
+      const key = normalize(info.label)
+      if (!unique.has(key)) unique.set(key, info)
+    })
+    return Array.from(unique, ([key, info]) => ({ key, ...info })).slice(0, 12)
+  }, [channels])
   const query = normalize(search.trim())
   const visible = useMemo(() => channels.filter((channel) => {
     if (query) {
@@ -93,15 +102,17 @@ function App() {
     }
     if (typeFilter && channel.type !== typeFilter) return false
     if (section === 'Favoriler' && !favorites.includes(channel.id)) return false
+    if (section === 'Diziler' && platformFilter !== 'all' && normalize(platformInfo(channel.platform || channel.category).label) !== platformFilter) return false
     if (category !== 'Tümü' && (channel.platform || channel.category) !== category) return false
     return true
-  }), [channels, typeFilter, section, favorites, category, query])
+  }), [channels, typeFilter, section, favorites, category, platformFilter, query])
+  const selectedPlatform = seriesPlatforms.find((item) => item.key === platformFilter)
   const continueWatching = useMemo(() => Object.values(watchProgress)
     .filter((item) => item.duration > 0 && item.position > 5 && item.position < item.duration - 15)
     .sort((a, b) => b.updatedAt - a.updatedAt), [watchProgress])
 
   const loadSource = (items: Channel[], name: string) => {
-    setChannels(items); setSourceName(name); setShowSource(false); setSection('Canlı TV'); setCategory('Tümü'); setToast(`${items.length} içerik başarıyla eklendi`)
+    setChannels(items); setSourceName(name); setShowSource(false); setSection('Canlı TV'); setCategory('Tümü'); setPlatformFilter('all'); setToast(`${items.length} içerik başarıyla eklendi`)
     localStorage.setItem('saltatrix-tv-channels', JSON.stringify(items)); localStorage.setItem('saltatrix-tv-source', name)
     enrichChannelLogos(items).then((enriched) => {
       setChannels(enriched)
@@ -142,12 +153,12 @@ function App() {
     <aside className={sidebar ? 'sidebar open' : 'sidebar'}>
       <div className="brand"><img src={logoPath}/><div>Saltatrix <span>TV</span></div><button className="mobile-close" onClick={() => setSidebar(false)}><X/></button></div>
       <nav>{nav.map(({ label, icon: Icon }) => <div className="nav-group" key={label}>
-        <button className={section === label ? 'active' : ''} onClick={() => { setSection(label); setCategory('Tümü'); if (label !== 'Diziler') setSidebar(false) }}><Icon size={20}/><span>{label}</span>{label === 'Favoriler' && favorites.length > 0 && <em>{favorites.length}</em>}</button>
+        <button className={section === label ? 'active' : ''} onClick={() => { setSection(label); setCategory('Tümü'); setPlatformFilter('all'); setSearch(''); if (label !== 'Diziler') setSidebar(false) }}><Icon size={20}/><span>{label}</span>{label === 'Favoriler' && favorites.length > 0 && <em>{favorites.length}</em>}</button>
         {label === 'Diziler' && section === 'Diziler' && <div className="platform-submenu">
-          <button className={category === 'Tümü' ? 'active' : ''} onClick={() => setCategory('Tümü')}><span className="platform-fallback"><Clapperboard/></span><b>Tüm diziler</b></button>
-          {seriesPlatforms.map((item) => { const info = platformInfo(item); return <button key={item} title={item} className={category === item ? 'active' : ''} onClick={() => { setCategory(item); setSidebar(false) }}>
-            <span className="platform-fallback">{info.image ? <img src={info.image} alt=""/> : info.label.slice(0, 1)}</span><b>{info.label}</b>
-          </button> })}
+          <button className={platformFilter === 'all' ? 'active' : ''} onClick={() => { setPlatformFilter('all'); setCategory('Tümü'); setSearch('') }}><span className="platform-fallback"><Clapperboard/></span><b>Tüm diziler</b></button>
+          {seriesPlatforms.map((item) => <button key={item.key} title={item.label} className={platformFilter === item.key ? 'active' : ''} onClick={() => { setPlatformFilter(item.key); setCategory('Tümü'); setSearch(''); setSidebar(false) }}>
+            <span className="platform-fallback">{item.image ? <img src={item.image} alt=""/> : item.label.slice(0, 1)}</span><b>{item.label}</b>
+          </button>)}
         </div>}
       </div>)}</nav>
       <div className="side-label">KÜTÜPHANE</div>
@@ -163,11 +174,11 @@ function App() {
           <div className="hero-art"><div className="orbit o1"/><div className="orbit o2"/><img src={logoPath}/><div className="floating-pill p1"><Radio/> <span><b>Canlı</b> tüm kanallar</span></div><div className="floating-pill p2"><Film/> <span><b>4K</b> yüksek kalite</span></div></div>
         </section> : <div className="page-title"><div><span>{query ? 'TÜM KÜTÜPHANEDE ARANIYOR' : section === 'Favoriler' ? 'SANA ÖZEL' : 'KEŞFET'}</span><h1>{query ? `“${search}” sonuçları` : section}</h1></div><button><ListFilter/> Filtrele</button></div>}
 
-        {!query && <section className="category-section"><div className="section-heading"><div><Compass/><h2>Kategoriler</h2></div><span>{categories.length - 1} kategori</span></div><div className="category-row">{categories.map((item, index) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}><i style={{ background: categoryColors[item] || `hsl(${(index * 47) % 360} 70% 65%)` }}/>{item}</button>)}</div></section>}
+        {!query && <section className="category-section"><div className="section-heading"><div><Compass/><h2>Kategoriler</h2></div><span>{categories.length - 1} kategori</span></div><div className="category-row">{categories.map((item, index) => <button key={item} className={category === item && platformFilter === 'all' ? 'active' : ''} onClick={() => { setCategory(item); setPlatformFilter('all'); setSearch('') }}><i style={{ background: categoryColors[item] || `hsl(${(index * 47) % 360} 70% 65%)` }}/>{item}</button>)}</div></section>}
 
         {!query && continueWatching.length > 0 && <section className="continue-section"><div className="section-heading"><div><Play/><h2>Kaldığın yerden devam et</h2></div><span>{continueWatching.length} içerik</span></div><div className="channel-grid continue-grid">{continueWatching.slice(0, 4).map((item, index) => <ChannelCard key={item.channel.id} channel={item.channel} index={index} favorite={favorites.includes(item.channel.id)} onPlay={playChannel} onFavorite={toggleFavorite} watchPercent={Math.round(item.position / item.duration * 100)}/>)}</div></section>}
 
-        <section className="channels-section"><div className="section-heading"><div><Radio/><h2>{query ? 'Arama sonuçları' : section === 'Favoriler' ? 'Favori içeriklerin' : category === 'Tümü' ? 'Senin için seçtik' : category}</h2></div><span>{visible.length} içerik</span></div>
+        <section className="channels-section"><div className="section-heading"><div><Radio/><h2>{query ? 'Arama sonuçları' : section === 'Favoriler' ? 'Favori içeriklerin' : selectedPlatform?.label || (category === 'Tümü' ? 'Senin için seçtik' : category)}</h2></div><span>{visible.length} içerik</span></div>
           {visible.length ? <div className="channel-grid">{visible.slice(0, 120).map((channel, index) => <ChannelCard key={channel.id} channel={channel} index={index} favorite={favorites.includes(channel.id)} onPlay={playChannel} onFavorite={toggleFavorite}/>)}</div> : <div className="empty-state"><div><Tv/></div><h3>Sonuç bulunamadı</h3><p>{query ? 'Farklı bir isim, platform veya kategori deneyin.' : 'Yeni bir liste ekleyin veya filtrelerinizi değiştirin.'}</p><button className="primary-btn" onClick={() => setShowSource(true)}><Plus/> Kaynak ekle</button></div>}
         </section>
       </div>
