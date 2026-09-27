@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { Cast, Maximize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
+import { Cast, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
 import type { Channel } from '../types'
 
 interface Props {
   channel: Channel
   resumeAt: number
+  fullscreen: boolean
+  onFullscreenChange: (enabled: boolean) => void
   onClose: () => void
   onNext: () => void
   onProgress: (channel: Channel, position: number, duration: number) => void
@@ -19,7 +21,7 @@ const formatTime = (seconds: number) => {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
-export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props) {
+export function Player({ channel, resumeAt, fullscreen, onFullscreenChange, onClose, onNext, onProgress }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedRef = useRef(0)
@@ -106,7 +108,7 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
     setControlsVisible(true)
     if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
     controlsTimerRef.current = setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused) setControlsVisible(false)
+      if (fullscreen && videoRef.current && !videoRef.current.paused) setControlsVisible(false)
     }, 5000)
   }
   const seekBy = (seconds: number) => {
@@ -124,12 +126,15 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
     else if (event.key.toLowerCase() === 'm') { setMuted((value) => !value); revealControls() }
   }
   const percent = duration > 0 ? Math.min(100, currentTime / duration * 100) : channel.progress || 45
-  const enterFullscreen = () => {
-    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
-    else panelRef.current?.requestFullscreen?.().catch(() => undefined)
+  const toggleFullscreen = () => {
+    const next = !fullscreen
+    if (!next) videoRef.current?.pause()
+    onFullscreenChange(next)
+    setControlsVisible(true)
+    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
   }
 
-  return <div ref={panelRef} className={`player-panel ${controlsVisible ? '' : 'controls-hidden'}`} role="dialog" aria-modal="true" aria-label={`${channel.name} oynatılıyor`} tabIndex={-1} onMouseMove={revealControls} onMouseDown={revealControls} onTouchStart={revealControls} onKeyDown={keyboardControls}>
+  return <div ref={panelRef} className={`player-panel ${fullscreen ? 'fullscreen' : 'mini'} ${controlsVisible ? '' : 'controls-hidden'}`} role="dialog" aria-modal="true" aria-label={`${channel.name} oynatılıyor`} tabIndex={-1} onMouseMove={revealControls} onMouseDown={revealControls} onTouchStart={revealControls} onKeyDown={keyboardControls}>
     <div className="player-topline"><div><span className="live-dot"/> {isLive ? 'CANLI YAYIN' : channel.type === 'series' ? 'DİZİ OYNATILIYOR' : 'FİLM OYNATILIYOR'}</div><button className="icon-btn" onClick={onClose} aria-label="Oynatıcıyı kapat"><X size={19}/></button></div>
     <div className="video-wrap">
       <video ref={videoRef} playsInline onLoadedMetadata={loaded} onTimeUpdate={track} onEnded={() => onProgress(channel, duration, duration)} onPlay={() => { setPlaying(true); revealControls() }} onPause={() => { setPlaying(false); setControlsVisible(true); if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current) }} onClick={() => { toggle(); revealControls() }}/>
@@ -145,7 +150,7 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
         {!isLive && <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>}
         <div className="control-spacer"/>
         <button><Cast/></button>
-        <button onClick={enterFullscreen} aria-label="Tam ekran"><Maximize/></button>
+        <button onClick={toggleFullscreen} aria-label={fullscreen ? 'Mini oynatıcıya geç' : 'Tam ekrana geç'}>{fullscreen ? <Minimize/> : <Maximize/>}</button>
       </div>
     </div>
     <div className="now-playing">

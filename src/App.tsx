@@ -70,6 +70,7 @@ function App() {
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('saltatrix-tv-favorites') || '[]'))
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(readProgress)
   const [selected, setSelected] = useState<Channel | null>(null)
+  const [playerFullscreen, setPlayerFullscreen] = useState(false)
   const [showSource, setShowSource] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -209,11 +210,14 @@ function App() {
     }).catch(() => undefined)
   }
   const toggleFavorite = (id: string) => setFavorites((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])
-  const playChannel = async (channel: Channel) => {
-    if (preferences.autoFullscreen) {
-      if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
-      else if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
-    }
+  const changeFullscreen = (enabled: boolean) => {
+    setPlayerFullscreen(enabled)
+    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(enabled).catch(() => undefined)
+    else if (enabled && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
+    else if (!enabled && document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
+  }
+  const playChannel = async (channel: Channel, preservePlayerMode = false) => {
+    if (!preservePlayerMode) changeFullscreen(preferences.autoFullscreen)
     if (channel.type === 'series' && !channel.url) {
       const resumed = continueWatching.find((item) => item.channel.parentId === channel.id)
       if (resumed) { setSelected(resumed.channel); return }
@@ -227,14 +231,13 @@ function App() {
   }
   const closePlayer = () => {
     setSelected(null)
-    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(false).catch(() => undefined)
-    else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
+    changeFullscreen(false)
   }
   const playNext = () => {
     if (!selected || !visible.length) return
     const parentId = selected.parentId || selected.id
     const index = visible.findIndex((channel) => channel.id === parentId)
-    void playChannel(visible[(Math.max(index, 0) + 1) % visible.length])
+    void playChannel(visible[(Math.max(index, 0) + 1) % visible.length], true)
   }
   const saveProgress = useCallback((channel: Channel, position: number, duration: number) => {
     if (channel.type === 'live' || !Number.isFinite(duration) || duration <= 0) return
@@ -283,7 +286,15 @@ function App() {
         </section>
       </div>
     </main>
-    {selected && <Player channel={selected} resumeAt={watchProgress[selected.id]?.position || 0} onProgress={saveProgress} onClose={closePlayer} onNext={playNext}/>}
+    {selected && <Player
+      channel={selected}
+      resumeAt={watchProgress[selected.id]?.position || 0}
+      fullscreen={playerFullscreen}
+      onFullscreenChange={changeFullscreen}
+      onProgress={saveProgress}
+      onClose={closePlayer}
+      onNext={playNext}
+    />}
     {showSource && <SourceModal onClose={() => setShowSource(false)} onLoaded={loadSource}/>} 
     {showSettings && <SettingsModal value={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)}/>}
     {showProfile && <ProfileModal value={profile} onSave={setProfile} onClose={() => setShowProfile(false)}/>}
