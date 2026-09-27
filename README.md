@@ -41,11 +41,7 @@ Kurulum dosyası `release/` klasöründe oluşturulur.
 
 ## Web yayını
 
-```bash
-npm run deploy
-```
-
-Statik uygulama Cloudflare Workers üzerinden `saltatrixtv.alperensenel.com` özel alan adına dağıtılır.
+`main` dalına gönderilen her güncelleme GitHub Actions tarafından derlenir ve GitHub Pages üzerinden otomatik olarak `saltatrixtv.alperensenel.com` adresine dağıtılır.
 
 ## Notlar
 
