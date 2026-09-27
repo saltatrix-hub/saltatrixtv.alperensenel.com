@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Check, ChevronDown, Clapperboard, Compass, Film, Heart, Home, ListFilter, Menu, MoreHorizontal, Play, Plus, Radio, Search, Settings, Sparkles, Tv, X } from 'lucide-react'
 import { ChannelCard } from './components/ChannelCard'
 import { Player } from './components/Player'
+import { ProfileModal, SettingsModal, type UserPreferences, type UserProfile } from './components/PreferencesModal'
 import { SourceModal } from './components/SourceModal'
 import { UpdateBanner } from './components/UpdateBanner'
 import { categoryColors, demoChannels } from './data'
@@ -13,6 +14,8 @@ type Section = 'home' | 'live' | 'movies' | 'series' | 'favorites'
 const nav: Array<{ id: Section; label: string; icon: typeof Home }> = [{ id: 'home', label: 'Ana Sayfa', icon: Home }, { id: 'live', label: 'Canlı TV', icon: Radio }, { id: 'movies', label: 'Filmler', icon: Film }, { id: 'series', label: 'Diziler', icon: Clapperboard }, { id: 'favorites', label: 'Favoriler', icon: Heart }]
 const logoPath = `${import.meta.env.BASE_URL}saltatrix-tv-logo.png`
 const progressKey = 'saltatrix-tv-watch-progress-v1'
+const preferencesKey = 'saltatrix-tv-preferences-v1'
+const profileKey = 'saltatrix-tv-profile-v1'
 
 const platformDomains: Array<[RegExp, string, string]> = [
   [/netflix/i, 'Netflix', 'netflix.com'],
@@ -52,6 +55,10 @@ const readProgress = (): Record<string, WatchProgress> => {
   try { return JSON.parse(localStorage.getItem(progressKey) || '{}') }
   catch { return {} }
 }
+const readStored = <T,>(key: string, fallback: T): T => {
+  try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') } }
+  catch { return fallback }
+}
 
 function App() {
   const [channels, setChannels] = useState<Channel[]>(() => { try { return repairXtreamSeriesMetadata(JSON.parse(localStorage.getItem('saltatrix-tv-channels') || 'null') || demoChannels) } catch { return demoChannels } })
@@ -64,6 +71,10 @@ function App() {
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(readProgress)
   const [selected, setSelected] = useState<Channel | null>(null)
   const [showSource, setShowSource] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [preferences, setPreferences] = useState<UserPreferences>(() => readStored(preferencesKey, { fontSize: 'large', autoFullscreen: true }))
+  const [profile, setProfile] = useState<UserProfile>(() => readStored(profileKey, { name: 'İyi seyirler' }))
   const [sidebar, setSidebar] = useState(false)
   const [toast, setToast] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
@@ -72,6 +83,8 @@ function App() {
 
   useEffect(() => localStorage.setItem('saltatrix-tv-favorites', JSON.stringify(favorites)), [favorites])
   useEffect(() => localStorage.setItem(progressKey, JSON.stringify(watchProgress)), [watchProgress])
+  useEffect(() => localStorage.setItem(preferencesKey, JSON.stringify(preferences)), [preferences])
+  useEffect(() => localStorage.setItem(profileKey, JSON.stringify(profile)), [profile])
   useEffect(() => { if (sourceName !== 'Saltatrix Demo') localStorage.setItem('saltatrix-tv-channels', JSON.stringify(channels)) }, [channels, sourceName])
   useEffect(() => {
     if (catalogRefreshAttempted.current || sourceName === 'Saltatrix Demo') return
@@ -197,8 +210,10 @@ function App() {
   }
   const toggleFavorite = (id: string) => setFavorites((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])
   const playChannel = async (channel: Channel) => {
-    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
-    else if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
+    if (preferences.autoFullscreen) {
+      if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
+      else if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
+    }
     if (channel.type === 'series' && !channel.url) {
       const resumed = continueWatching.find((item) => item.channel.parentId === channel.id)
       if (resumed) { setSelected(resumed.channel); return }
@@ -231,7 +246,9 @@ function App() {
     })
   }, [])
 
-  return <div className="app-shell">
+  const profileInitials = profile.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('tr-TR') || 'ST'
+
+  return <div className={`app-shell font-${preferences.fontSize}`}>
     <div className="aurora aurora-one"/><div className="aurora aurora-two"/>
     <aside className={sidebar ? 'sidebar open' : 'sidebar'}>
       <div className="brand"><img src={logoPath}/><div>Saltatrix <span>TV</span></div><button className="mobile-close" onClick={() => setSidebar(false)}><X/></button></div>
@@ -246,7 +263,7 @@ function App() {
       </div>)}</nav>
       <div className="side-label">KÜTÜPHANE</div>
       <button className="source-card" onClick={() => setShowSource(true)}><span><Tv/></span><div><small>Aktif liste</small><b>{sourceName}</b></div><ChevronDown/></button>
-      <div className="sidebar-bottom"><button><Settings/><span>Ayarlar</span></button><div className="profile"><div>ST</div><span><b>İyi seyirler</b><small>Kişisel profil</small></span><MoreHorizontal/></div></div>
+      <div className="sidebar-bottom"><button onClick={() => setShowSettings(true)}><Settings/><span>Ayarlar</span></button><button className="profile" onClick={() => setShowProfile(true)}><span className="profile-avatar-small">{profileInitials}</span><span><b>{profile.name}</b><small>Kişisel profil</small></span><MoreHorizontal/></button></div>
     </aside>
     {sidebar && <div className="sidebar-shade" onClick={() => setSidebar(false)}/>} 
     <main>
@@ -268,6 +285,8 @@ function App() {
     </main>
     {selected && <Player channel={selected} resumeAt={watchProgress[selected.id]?.position || 0} onProgress={saveProgress} onClose={closePlayer} onNext={playNext}/>}
     {showSource && <SourceModal onClose={() => setShowSource(false)} onLoaded={loadSource}/>} 
+    {showSettings && <SettingsModal value={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)}/>}
+    {showProfile && <ProfileModal value={profile} onSave={setProfile} onClose={() => setShowProfile(false)}/>}
     <UpdateBanner/>
     {toast && <div className="toast"><Check/>{toast}</div>}
   </div>
