@@ -1,7 +1,7 @@
 {
   "name": "saltatrix-tv",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "scripts": {
     "dev": "npm run build && vite preview",
@@ -68,8 +68,9 @@
       "artifactName": "Saltatrix-TV-Setup-${version}.${ext}"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Saltatrix TV"

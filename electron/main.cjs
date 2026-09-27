@@ -20,7 +20,7 @@ function initializeUpdater() {
   }
   updaterInitialized = true
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.allowPrerelease = false
 
   autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking' }))
@@ -76,7 +76,7 @@ ipcMain.handle('updater:check', async () => {
   return updateState
 })
 ipcMain.handle('updater:restart-and-install', () => {
-  if (updateState.status === 'ready') autoUpdater.quitAndInstall(false, true)
+  if (updateState.status === 'ready') autoUpdater.quitAndInstall(true, true)
 })
 
 app.whenReady().then(() => {
