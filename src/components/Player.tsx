@@ -31,6 +31,12 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
   const isLive = channel.type === 'live'
 
   useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  useEffect(() => {
     const video = videoRef.current
     if (!video || !channel.url) return
     setError(''); setCurrentTime(0); setDuration(0); lastSavedRef.current = 0
@@ -92,7 +98,7 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
   }
   const percent = duration > 0 ? Math.min(100, currentTime / duration * 100) : channel.progress || 45
 
-  return <div className="player-panel">
+  return <div className="player-panel" role="dialog" aria-modal="true" aria-label={`${channel.name} oynatılıyor`}>
     <div className="player-topline"><div><span className="live-dot"/> {isLive ? 'CANLI YAYIN' : channel.type === 'series' ? 'DİZİ OYNATILIYOR' : 'FİLM OYNATILIYOR'}</div><button className="icon-btn" onClick={onClose} aria-label="Oynatıcıyı kapat"><X size={19}/></button></div>
     <div className="video-wrap">
       <video ref={videoRef} playsInline onLoadedMetadata={loaded} onTimeUpdate={track} onEnded={() => onProgress(channel, duration, duration)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onClick={toggle}/>

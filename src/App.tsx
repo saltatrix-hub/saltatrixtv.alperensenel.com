@@ -30,7 +30,15 @@ const normalize = (value: string) => value
   .toLocaleLowerCase('tr-TR')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/ı/g, 'i')
+  .replace(/[çğıöşü]/g, (letter) => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[letter] || letter)
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim()
+
+const searchAliases = (type: ContentType) => type === 'live'
+  ? 'canli tv televizyon kanal live yayin'
+  : type === 'movie'
+    ? 'film filmler sinema movie vod'
+    : 'dizi diziler series sezon bolum platform'
 
 const platformInfo = (category: string) => {
   const match = platformDomains.find(([pattern]) => pattern.test(category))
@@ -94,18 +102,55 @@ function App() {
     return Array.from(unique, ([key, info]) => ({ key, ...info })).slice(0, 12)
   }, [channels])
   const query = normalize(search.trim())
-  const visible = useMemo(() => channels.filter((channel) => {
+  const searchIndex = useMemo(() => channels.map((channel, index) => {
+    const name = normalize(channel.name)
+    const categoryName = normalize(channel.category)
+    const platformName = normalize(`${channel.platform || ''} ${platformInfo(channel.platform || channel.category).label}`)
+    const text = normalize([
+      channel.name,
+      channel.category,
+      channel.platform,
+      platformInfo(channel.platform || channel.category).label,
+      channel.genre,
+      channel.description,
+      channel.year,
+      channel.language,
+      channel.quality,
+      channel.now,
+      channel.next,
+      searchAliases(channel.type),
+    ].filter(Boolean).join(' '))
+    return { channel, index, name, categoryName, platformName, text, compact: text.replace(/\s/g, '') }
+  }), [channels])
+  const visible = useMemo(() => {
     if (query) {
-      const typeWords = channel.type === 'live' ? 'canlı tv kanal televizyon' : channel.type === 'movie' ? 'film sinema' : 'dizi series'
-      const haystack = normalize([channel.name, channel.category, channel.platform, channel.genre, channel.description, channel.year, typeWords].filter(Boolean).join(' '))
-      return query.split(/\s+/).every((word) => haystack.includes(word))
+      const tokens = query.split(/\s+/).filter(Boolean)
+      const compactQuery = query.replace(/\s/g, '')
+      return searchIndex
+        .map((entry) => {
+          if (!tokens.every((token) => entry.text.includes(token) || entry.compact.includes(token))) return null
+          let score = 0
+          if (entry.name === query) score += 500
+          if (entry.name.startsWith(query)) score += 250
+          if (entry.name.includes(query)) score += 180
+          if (entry.name.replace(/\s/g, '').includes(compactQuery)) score += 140
+          if (entry.platformName.includes(query)) score += 90
+          if (entry.categoryName.includes(query)) score += 70
+          score += tokens.filter((token) => entry.name.includes(token)).length * 35
+          return { ...entry, score }
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+        .sort((left, right) => right.score - left.score || left.index - right.index)
+        .map((entry) => entry.channel)
     }
-    if (typeFilter && channel.type !== typeFilter) return false
-    if (section === 'Favoriler' && !favorites.includes(channel.id)) return false
-    if (section === 'Diziler' && platformFilter !== 'all' && normalize(platformInfo(channel.platform || channel.category).label) !== platformFilter) return false
-    if (category !== 'Tümü' && (channel.platform || channel.category) !== category) return false
-    return true
-  }), [channels, typeFilter, section, favorites, category, platformFilter, query])
+    return channels.filter((channel) => {
+      if (typeFilter && channel.type !== typeFilter) return false
+      if (section === 'Favoriler' && !favorites.includes(channel.id)) return false
+      if (section === 'Diziler' && platformFilter !== 'all' && normalize(platformInfo(channel.platform || channel.category).label) !== platformFilter) return false
+      if (category !== 'Tümü' && (channel.platform || channel.category) !== category) return false
+      return true
+    })
+  }, [channels, searchIndex, typeFilter, section, favorites, category, platformFilter, query])
   const selectedPlatform = seriesPlatforms.find((item) => item.key === platformFilter)
   const continueWatching = useMemo(() => Object.values(watchProgress)
     .filter((item) => item.duration > 0 && item.position > 5 && item.position < item.duration - 15)
@@ -121,6 +166,7 @@ function App() {
   }
   const toggleFavorite = (id: string) => setFavorites((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])
   const playChannel = async (channel: Channel) => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
     if (channel.type === 'series' && !channel.url) {
       const resumed = continueWatching.find((item) => item.channel.parentId === channel.id)
       if (resumed) { setSelected(resumed.channel); return }
@@ -131,6 +177,10 @@ function App() {
     }
     if (!channel.url) { setToast('Bu içerikte oynatma bağlantısı yok.'); return }
     setSelected(channel)
+  }
+  const closePlayer = () => {
+    setSelected(null)
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
   }
   const playNext = () => {
     if (!selected || !visible.length) return
@@ -183,7 +233,7 @@ function App() {
         </section>
       </div>
     </main>
-    {selected && <Player channel={selected} resumeAt={watchProgress[selected.id]?.position || 0} onProgress={saveProgress} onClose={() => setSelected(null)} onNext={playNext}/>}
+    {selected && <Player channel={selected} resumeAt={watchProgress[selected.id]?.position || 0} onProgress={saveProgress} onClose={closePlayer} onNext={playNext}/>}
     {showSource && <SourceModal onClose={() => setShowSource(false)} onLoaded={loadSource}/>} 
     <UpdateBanner/>
     {toast && <div className="toast"><Check/>{toast}</div>}
