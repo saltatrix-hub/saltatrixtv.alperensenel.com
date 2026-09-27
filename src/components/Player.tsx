@@ -24,6 +24,7 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
   const lastSavedRef = useRef(0)
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
+  const [volume, setVolume] = useState(1)
   const [error, setError] = useState('')
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -33,12 +34,22 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
     const video = videoRef.current
     if (!video || !channel.url) return
     setError(''); setCurrentTime(0); setDuration(0); lastSavedRef.current = 0
+    video.muted = muted
+    video.volume = volume
     let hls: Hls | undefined
     if (channel.url.includes('.m3u8') && Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: isLive })
       hls.loadSource(channel.url)
       hls.attachMedia(video)
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => undefined))
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (hls && hls.audioTracks.length > 0 && hls.audioTrack < 0) hls.audioTrack = 0
+        video.muted = muted
+        video.volume = volume
+        video.play().catch(() => undefined)
+      })
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        if (hls && hls.audioTracks.length > 0 && hls.audioTrack < 0) hls.audioTrack = 0
+      })
       hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setError('Yayın şu anda oynatılamıyor.') })
     } else {
       video.src = channel.url
@@ -49,6 +60,13 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
       hls?.destroy(); video.removeAttribute('src'); video.load()
     }
   }, [channel, isLive, onProgress])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = muted
+    video.volume = volume
+  }, [muted, volume])
 
   const loaded = () => {
     const video = videoRef.current
@@ -83,7 +101,8 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
       <div className="video-controls">
         <button onClick={toggle}>{playing ? <Pause fill="currentColor"/> : <Play fill="currentColor"/>}</button>
         <button onClick={onNext}><SkipForward fill="currentColor"/></button>
-        <button onClick={() => { if (videoRef.current) videoRef.current.muted = !muted; setMuted(!muted) }}>{muted ? <VolumeX/> : <Volume2/>}</button>
+        <button onClick={() => setMuted((value) => !value)} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>{muted || volume === 0 ? <VolumeX/> : <Volume2/>}</button>
+        <input className="volume-slider" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); setMuted(next === 0) }}/>
         {!isLive && <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>}
         <div className="control-spacer"/>
         <button><Cast/></button>
