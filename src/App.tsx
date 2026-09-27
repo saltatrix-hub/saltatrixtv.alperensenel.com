@@ -197,7 +197,8 @@ function App() {
   }
   const toggleFavorite = (id: string) => setFavorites((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])
   const playChannel = async (channel: Channel) => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
+    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
+    else if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined)
     if (channel.type === 'series' && !channel.url) {
       const resumed = continueWatching.find((item) => item.channel.parentId === channel.id)
       if (resumed) { setSelected(resumed.channel); return }
@@ -211,7 +212,8 @@ function App() {
   }
   const closePlayer = () => {
     setSelected(null)
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
+    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(false).catch(() => undefined)
+    else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
   }
   const playNext = () => {
     if (!selected || !visible.length) return

@@ -58,7 +58,7 @@ function createWindow() {
   })
 
   mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
-  mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  mainWindow.webContents.session.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === 'fullscreen'))
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mainWindow.webContents.getURL()) event.preventDefault()
   })
@@ -77,6 +77,11 @@ ipcMain.handle('updater:check', async () => {
 })
 ipcMain.handle('updater:restart-and-install', () => {
   if (updateState.status === 'ready') autoUpdater.quitAndInstall(true, true)
+})
+ipcMain.handle('window:set-fullscreen', (_event, enabled) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.setFullScreen(Boolean(enabled))
+  return mainWindow.isFullScreen()
 })
 
 app.whenReady().then(() => {

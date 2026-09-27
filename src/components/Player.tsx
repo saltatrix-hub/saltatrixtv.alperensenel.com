@@ -20,6 +20,7 @@ const formatTime = (seconds: number) => {
 }
 
 export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props) {
+  const panelRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedRef = useRef(0)
   const [playing, setPlaying] = useState(false)
@@ -97,8 +98,12 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
     else video.pause()
   }
   const percent = duration > 0 ? Math.min(100, currentTime / duration * 100) : channel.progress || 45
+  const enterFullscreen = () => {
+    if (window.saltatrixDesktop) window.saltatrixDesktop.window.setFullscreen(true).catch(() => undefined)
+    else panelRef.current?.requestFullscreen?.().catch(() => undefined)
+  }
 
-  return <div className="player-panel" role="dialog" aria-modal="true" aria-label={`${channel.name} oynatılıyor`}>
+  return <div ref={panelRef} className="player-panel" role="dialog" aria-modal="true" aria-label={`${channel.name} oynatılıyor`}>
     <div className="player-topline"><div><span className="live-dot"/> {isLive ? 'CANLI YAYIN' : channel.type === 'series' ? 'DİZİ OYNATILIYOR' : 'FİLM OYNATILIYOR'}</div><button className="icon-btn" onClick={onClose} aria-label="Oynatıcıyı kapat"><X size={19}/></button></div>
     <div className="video-wrap">
       <video ref={videoRef} playsInline onLoadedMetadata={loaded} onTimeUpdate={track} onEnded={() => onProgress(channel, duration, duration)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onClick={toggle}/>
@@ -112,7 +117,7 @@ export function Player({ channel, resumeAt, onClose, onNext, onProgress }: Props
         {!isLive && <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>}
         <div className="control-spacer"/>
         <button><Cast/></button>
-        <button onClick={() => videoRef.current?.requestFullscreen()}><Maximize/></button>
+        <button onClick={enterFullscreen} aria-label="Tam ekran"><Maximize/></button>
       </div>
     </div>
     <div className="now-playing">
