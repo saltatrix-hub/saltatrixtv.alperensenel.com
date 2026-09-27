@@ -13,6 +13,23 @@ export interface Channel {
   progress?: number
   language?: string
   quality?: string
+  description?: string
+  genre?: string
+  rating?: string
+  platform?: string
+  year?: string
+  duration?: string
+  seriesInfoUrl?: string
+  seriesBaseUrl?: string
+  parentId?: string
+  episodeLabel?: string
+}
+
+export interface WatchProgress {
+  channel: Channel
+  position: number
+  duration: number
+  updatedAt: number
 }
 
 export interface XtreamCredentials {
