@@ -3,6 +3,7 @@ import { FileUp, Link2, ListVideo, Server, ShieldCheck, X } from 'lucide-react'
 import { parseM3U } from '../lib/m3u'
 import { loadXtream } from '../lib/xtream'
 import type { Channel, XtreamCredentials } from '../types'
+import { fetchProvider } from '../lib/proxy'
 
 interface Props { onClose: () => void; onLoaded: (channels: Channel[], sourceName: string) => void }
 
@@ -25,7 +26,7 @@ export function SourceModal({ onClose, onLoaded }: Props) {
   const connectUrl = async () => {
     if (!url) return setError('Bir M3U adresi girin.')
     setLoading(true); setError('')
-    try { const res = await fetch(url); if (!res.ok) throw new Error(`Liste indirilemedi (${res.status}).`); const data = parseM3U(await res.text()); if (!data.length) throw new Error('Bu listede kanal bulunamadı.'); onLoaded(data, 'M3U Listem') }
+    try { const res = await fetchProvider(url); if (!res.ok) throw new Error(`Liste indirilemedi (${res.status}).`); const data = parseM3U(await res.text()); if (!data.length) throw new Error('Bu listede kanal bulunamadı.'); onLoaded(data, 'M3U Listem') }
     catch (err) { setError(err instanceof Error ? err.message : 'Liste alınamadı.') }
     finally { setLoading(false) }
   }

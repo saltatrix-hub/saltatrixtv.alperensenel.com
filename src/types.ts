@@ -33,6 +33,11 @@ export interface WatchProgress {
   updatedAt: number
 }
 
+export interface SeriesSeason {
+  number: string
+  episodes: Channel[]
+}
+
 export interface XtreamCredentials {
   name: string
   server: string

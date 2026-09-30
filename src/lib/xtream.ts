@@ -1,4 +1,5 @@
-import type { Channel, ContentType, XtreamCredentials } from '../types'
+import type { Channel, ContentType, SeriesSeason, XtreamCredentials } from '../types'
+import { fetchProvider } from './proxy'
 
 type XtreamStream = {
   stream_id?: number
@@ -50,7 +51,7 @@ type SeriesResponse = {
 const cleanServer = (value: string) => value.trim().replace(/\/+$/, '')
 
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
+  const response = await fetchProvider(url)
   if (!response.ok) throw new Error(`Sunucu ${response.status} yanıtı verdi.`)
   return response.json() as Promise<T>
 }
@@ -119,11 +120,14 @@ export async function loadXtream(credentials: XtreamCredentials): Promise<Channe
     { type: 'movie', action: 'get_vod_streams', categories: 'get_vod_categories', path: 'movie' },
     { type: 'series', action: 'get_series', categories: 'get_series_categories', path: 'series' },
   ]
-  const results = await Promise.all(specs.map(async (spec) => {
-    const [streams, cats] = await Promise.all([
+  const results = await Promise.allSettled(specs.map(async (spec) => {
+    const [streamsResult, categoriesResult] = await Promise.allSettled([
       getJson<XtreamStream[]>(`${api}&action=${spec.action}`),
       getJson<XtreamCategory[]>(`${api}&action=${spec.categories}`),
     ])
+    if (streamsResult.status === 'rejected') throw streamsResult.reason
+    const streams = Array.isArray(streamsResult.value) ? streamsResult.value : []
+    const cats = categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value) ? categoriesResult.value : []
     const categoryMap = new Map(cats.map((cat) => [String(cat.category_id), cat.category_name]))
     return streams.map((item): Channel => {
       const id = spec.type === 'series' ? (item.series_id ?? item.stream_id ?? 0) : (item.stream_id ?? item.series_id ?? 0)
@@ -151,7 +155,9 @@ export async function loadXtream(credentials: XtreamCredentials): Promise<Channe
       }
     })
   }))
-  return results.flat()
+  const available = results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+  if (!available.length) throw new Error('Sağlayıcıdan canlı TV, film veya dizi kataloğu alınamadı.')
+  return available
 }
 
 export async function fetchSeriesMetadata(series: Channel): Promise<Partial<Channel>> {
@@ -166,7 +172,7 @@ export async function fetchSeriesMetadata(series: Channel): Promise<Partial<Chan
   }
 }
 
-export async function resolveSeriesEpisode(series: Channel): Promise<Channel> {
+export async function loadSeriesEpisodes(series: Channel): Promise<SeriesSeason[]> {
   if (!series.seriesInfoUrl || !series.seriesBaseUrl) throw new Error('Bu dizi için bölüm bilgisi bulunamadı.')
   const response = await getJson<SeriesResponse>(series.seriesInfoUrl)
   const rawEpisodes = response.episodes || {}
@@ -177,27 +183,39 @@ export async function resolveSeriesEpisode(series: Channel): Promise<Channel> {
       return groups
     }, {})
     : Object.fromEntries(Object.entries(rawEpisodes).map(([season, episodes]) => [season, Array.isArray(episodes) ? episodes : Object.values(episodes || {})]))
-  const seasons = Object.entries(groupedEpisodes).sort(([a], [b]) => Number(a) - Number(b))
-  const firstSeason = seasons.find(([, episodes]) => episodes.length > 0)
-  if (!firstSeason) throw new Error('Bu diziye ait oynatılabilir bölüm bulunamadı.')
-  const [seasonNumber, episodes] = firstSeason
-  const episode = [...episodes].sort((a, b) => Number(a.episode_num || 0) - Number(b.episode_num || 0))[0]
-  const episodeId = episode.id ?? episode.stream_id
-  if (episodeId === undefined) throw new Error('Bölüm oynatma adresi bulunamadı.')
-  const extension = episode.container_extension || 'mp4'
-  const episodeLabel = `S${String(seasonNumber).padStart(2, '0')}E${String(episode.episode_num || 1).padStart(2, '0')}`
+  const seasons = Object.entries(groupedEpisodes)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([seasonNumber, episodes]): SeriesSeason => ({
+      number: seasonNumber,
+      episodes: [...episodes]
+        .sort((a, b) => Number(a.episode_num || 0) - Number(b.episode_num || 0))
+        .flatMap((episode) => {
+          const episodeId = episode.id ?? episode.stream_id
+          if (episodeId === undefined) return []
+          const extension = episode.container_extension || 'mp4'
+          const episodeNumber = episode.episode_num || 1
+          const episodeLabel = `S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
+          return [{
+            ...series,
+            id: `${series.id}-episode-${episodeId}`,
+            parentId: series.id,
+            name: episode.title ? `${series.name} · ${episode.title}` : `${series.name} · ${episodeLabel}`,
+            url: `${series.seriesBaseUrl}/${episodeId}.${extension}`,
+            logo: firstImage(episode.info?.movie_image, episode.info?.cover, response.info?.cover, response.info?.cover_big, response.info?.movie_image, response.info?.backdrop_path) || series.logo,
+            description: episode.info?.plot || response.info?.plot || series.description,
+            genre: episode.info?.genre || response.info?.genre || series.genre,
+            rating: episode.info?.rating ? String(episode.info.rating) : response.info?.rating ? String(response.info.rating) : series.rating,
+            duration: episode.info?.duration || response.info?.duration || series.duration,
+            episodeLabel,
+          }]
+        }),
+    }))
+    .filter((season) => season.episodes.length > 0)
+  if (!seasons.length) throw new Error('Bu diziye ait oynatılabilir bölüm bulunamadı.')
+  return seasons
+}
 
-  return {
-    ...series,
-    id: `${series.id}-episode-${episodeId}`,
-    parentId: series.id,
-    name: `${series.name} · ${episodeLabel}`,
-    url: `${series.seriesBaseUrl}/${episodeId}.${extension}`,
-    logo: firstImage(episode.info?.movie_image, episode.info?.cover, response.info?.cover, response.info?.cover_big, response.info?.movie_image, response.info?.backdrop_path) || series.logo,
-    description: episode.info?.plot || response.info?.plot || series.description,
-    genre: episode.info?.genre || response.info?.genre || series.genre,
-    rating: episode.info?.rating ? String(episode.info.rating) : response.info?.rating ? String(response.info.rating) : series.rating,
-    duration: episode.info?.duration || response.info?.duration || series.duration,
-    episodeLabel,
-  }
+export async function resolveSeriesEpisode(series: Channel): Promise<Channel> {
+  const seasons = await loadSeriesEpisodes(series)
+  return seasons[0].episodes[0]
 }

@@ -1,6 +1,7 @@
 import type { CSSProperties, MouseEvent } from 'react'
 import { Clock3, Heart, Play, Star } from 'lucide-react'
 import type { Channel } from '../types'
+import { providerUrl } from '../lib/proxy'
 
 interface Props {
   channel: Channel
@@ -28,7 +29,14 @@ export function ChannelCard({ channel, index, favorite, onPlay, onFavorite, watc
   >
     <div className={`channel-visual visual-${index % 6}${hasArtwork ? ' is-artwork' : ''}`}>
       <span className="logo-fallback">{channel.name.slice(0, 2).toUpperCase()}</span>
-      {channel.logo && <img src={channel.logo} alt={`${channel.name} görseli`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }}/>} 
+      {channel.logo && <img
+        src={providerUrl(channel.logo)}
+        alt={`${channel.name} görseli`}
+        loading="lazy"
+        crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
+        onError={(event) => { event.currentTarget.style.display = 'none' }}
+      />}
       <div className="card-overlay">
         <button aria-label={`${channel.name} oynat`}><Play fill="currentColor"/></button>
         <div className="hover-meta">

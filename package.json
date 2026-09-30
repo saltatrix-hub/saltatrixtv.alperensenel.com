@@ -1,11 +1,12 @@
 {
   "name": "saltatrix-tv",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "npm run build && vite preview",
     "build": "tsc -b && vite build",
+    "test": "node --import tsx --test src/lib/xtream.test.ts",
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "desktop:build": "npm run build && electron-builder --win nsis"
@@ -29,11 +30,14 @@
     "vite": "^8.3.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260930.2",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "electron": "latest",
     "electron-builder": "latest",
-    "typescript": "latest"
+    "tsx": "^4.23.15",
+    "typescript": "latest",
+    "wrangler": "^4.144.0"
   },
   "build": {
     "appId": "com.alperensenel.saltatrixtv",

@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Check, ChevronDown, Clapperboard, Compass, Film, Heart, Home, ListFilter, Menu, MoreHorizontal, Play, Plus, Radio, Search, Settings, Sparkles, Tv, X } from 'lucide-react'
 import { ChannelCard } from './components/ChannelCard'
 import { Player } from './components/Player'
+import { SeriesModal } from './components/SeriesModal'
 import { ProfileModal, SettingsModal, type UserPreferences, type UserProfile } from './components/PreferencesModal'
 import { SourceModal } from './components/SourceModal'
 import { UpdateBanner } from './components/UpdateBanner'
 import { categoryColors, demoChannels } from './data'
 import { enrichChannelLogos } from './lib/logos'
-import { fetchSeriesMetadata, inferXtreamCredentials, loadXtream, repairXtreamSeriesMetadata, resolveSeriesEpisode } from './lib/xtream'
+import { fetchSeriesMetadata, inferXtreamCredentials, loadXtream, repairXtreamSeriesMetadata } from './lib/xtream'
 import type { Channel, ContentType, WatchProgress } from './types'
 
 type Section = 'home' | 'live' | 'movies' | 'series' | 'favorites'
@@ -70,6 +71,8 @@ function App() {
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('saltatrix-tv-favorites') || '[]'))
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(readProgress)
   const [selected, setSelected] = useState<Channel | null>(null)
+  const [seriesTarget, setSeriesTarget] = useState<Channel | null>(null)
+  const [displayLimit, setDisplayLimit] = useState(120)
   const [playerFullscreen, setPlayerFullscreen] = useState(false)
   const [showSource, setShowSource] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -81,6 +84,7 @@ function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const metadataRequests = useRef(new Set<string>())
   const catalogRefreshAttempted = useRef(false)
+  const seriesEpisodes = useRef(new Map<string, Channel[]>())
 
   useEffect(() => localStorage.setItem('saltatrix-tv-favorites', JSON.stringify(favorites)), [favorites])
   useEffect(() => localStorage.setItem(progressKey, JSON.stringify(watchProgress)), [watchProgress])
@@ -133,7 +137,7 @@ function App() {
     })
     return Array.from(unique.values())
   }, [channels])
-  const categories = useMemo(() => ['Tümü', ...Array.from(new Set(catalogChannels.filter((item) => !typeFilter || item.type === typeFilter).map((item) => item.category))).slice(0, 14)], [catalogChannels, typeFilter])
+  const categories = useMemo(() => ['Tümü', ...Array.from(new Set(catalogChannels.filter((item) => !typeFilter || item.type === typeFilter).map((item) => item.category)))], [catalogChannels, typeFilter])
   const seriesPlatforms = useMemo(() => {
     const unique = new Map<string, { label: string; image: string }>()
     catalogChannels.filter((item) => item.type === 'series').forEach((item) => {
@@ -141,7 +145,7 @@ function App() {
       const key = normalize(info.label)
       if (!unique.has(key)) unique.set(key, info)
     })
-    return Array.from(unique, ([key, info]) => ({ key, ...info })).slice(0, 12)
+    return Array.from(unique, ([key, info]) => ({ key, ...info }))
   }, [catalogChannels])
   const query = normalize(search.trim())
   const searchIndex = useMemo(() => catalogChannels.map((channel, index) => {
@@ -180,10 +184,11 @@ function App() {
       if (typeFilter && channel.type !== typeFilter) return false
       if (section === 'favorites' && !favorites.includes(channel.id)) return false
       if (section === 'series' && platformFilter !== 'all' && normalize(platformInfo(channel.platform || channel.category).label) !== platformFilter) return false
-      if (category !== 'Tümü' && (channel.platform || channel.category) !== category) return false
+      if (category !== 'Tümü' && channel.category !== category) return false
       return true
     })
   }, [catalogChannels, searchIndex, typeFilter, section, favorites, category, platformFilter, query])
+  useEffect(() => setDisplayLimit(120), [section, category, platformFilter, query, sourceName])
   useEffect(() => {
     if (section !== 'series') return
     const missing = visible.filter((channel) => channel.type === 'series' && !channel.logo && channel.seriesInfoUrl && !metadataRequests.current.has(channel.id)).slice(0, 24)
@@ -191,7 +196,6 @@ function App() {
     missing.forEach((channel) => metadataRequests.current.add(channel.id))
     Promise.all(missing.map(async (channel) => ({ id: channel.id, metadata: await fetchSeriesMetadata(channel).catch((): Partial<Channel> => ({})) }))).then((results) => {
       const updates = new Map(results.map((result) => [result.id, result.metadata]))
-      if (![...updates.values()].some((metadata) => metadata.logo)) return
       setChannels((current) => current.map((channel) => updates.has(channel.id) ? { ...channel, ...updates.get(channel.id) } : channel))
     })
   }, [section, visible])
@@ -217,16 +221,12 @@ function App() {
     else if (!enabled && document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined)
   }
   const playChannel = async (channel: Channel, preservePlayerMode = false) => {
-    if (!preservePlayerMode) changeFullscreen(preferences.autoFullscreen)
     if (channel.type === 'series' && !channel.url) {
-      const resumed = continueWatching.find((item) => item.channel.parentId === channel.id)
-      if (resumed) { setSelected(resumed.channel); return }
-      setToast('İlk bölüm hazırlanıyor…')
-      try { setSelected(await resolveSeriesEpisode(channel)); setToast('') }
-      catch (error) { setToast(error instanceof Error ? error.message : 'Bölüm açılamadı.') }
+      setSeriesTarget(channel)
       return
     }
     if (!channel.url) { setToast('Bu içerikte oynatma bağlantısı yok.'); return }
+    if (!preservePlayerMode) changeFullscreen(preferences.autoFullscreen)
     setSelected(channel)
   }
   const closePlayer = () => {
@@ -235,10 +235,27 @@ function App() {
   }
   const playNext = () => {
     if (!selected || !visible.length) return
+    if (selected.parentId) {
+      const episodes = seriesEpisodes.current.get(selected.parentId) || []
+      const episodeIndex = episodes.findIndex((episode) => episode.id === selected.id)
+      if (episodeIndex >= 0 && episodeIndex < episodes.length - 1) {
+        void playChannel(episodes[episodeIndex + 1], true)
+        return
+      }
+      setToast('Sezonun son bölümündesin.')
+      return
+    }
     const parentId = selected.parentId || selected.id
     const index = visible.findIndex((channel) => channel.id === parentId)
     void playChannel(visible[(Math.max(index, 0) + 1) % visible.length], true)
   }
+  const cacheSeriesEpisodes = useCallback((seriesId: string, episodes: Channel[]) => {
+    seriesEpisodes.current.set(seriesId, episodes)
+  }, [])
+  const handleSeriesEpisodesLoaded = useCallback((episodes: Channel[]) => {
+    const seriesId = episodes[0]?.parentId
+    if (seriesId) cacheSeriesEpisodes(seriesId, episodes)
+  }, [cacheSeriesEpisodes])
   const saveProgress = useCallback((channel: Channel, position: number, duration: number) => {
     if (!preferences.rememberProgress || channel.type === 'live' || !Number.isFinite(duration) || duration <= 0) return
     setWatchProgress((previous) => {
@@ -282,7 +299,7 @@ function App() {
         {!query && section === 'home' && continueWatching.length > 0 && <section className="continue-section"><div className="section-heading"><div><Play/><h2>Kaldığın yerden devam et</h2></div><span>{continueWatching.length} içerik</span></div><div className="channel-grid continue-grid">{continueWatching.slice(0, 4).map((item, index) => <ChannelCard key={item.channel.id} channel={item.channel} index={index} favorite={favorites.includes(item.channel.id)} onPlay={playChannel} onFavorite={toggleFavorite} watchPercent={Math.round(item.position / item.duration * 100)}/>)}</div></section>}
 
         <section className="channels-section"><div className="section-heading"><div><Radio/><h2>{query ? 'Arama sonuçları' : section === 'favorites' ? 'Favori içeriklerin' : selectedPlatform?.label || (category === 'Tümü' ? 'Senin için seçtik' : category)}</h2></div><span>{visible.length} içerik</span></div>
-          {visible.length ? <div className="channel-grid">{visible.slice(0, 120).map((channel, index) => <ChannelCard key={`${channel.type}-${channel.id}-${index}`} channel={channel} index={index} favorite={favorites.includes(channel.id)} onPlay={playChannel} onFavorite={toggleFavorite}/>)}</div> : <div className="empty-state"><div><Tv/></div><h3>Sonuç bulunamadı</h3><p>{query ? 'Farklı bir isim, platform veya kategori deneyin.' : 'Yeni bir liste ekleyin veya filtrelerinizi değiştirin.'}</p><button className="primary-btn" onClick={() => setShowSource(true)}><Plus/> Kaynak ekle</button></div>}
+          {visible.length ? <><div className="channel-grid">{visible.slice(0, displayLimit).map((channel, index) => <ChannelCard key={`${channel.type}-${channel.id}-${index}`} channel={channel} index={index} favorite={favorites.includes(channel.id)} onPlay={playChannel} onFavorite={toggleFavorite}/>)}</div>{displayLimit < visible.length && <button className="load-more" onClick={() => setDisplayLimit((limit) => limit + 120)}>Daha fazla yükle <span>{visible.length - displayLimit} içerik kaldı</span></button>}</> : <div className="empty-state"><div><Tv/></div><h3>Sonuç bulunamadı</h3><p>{query ? 'Farklı bir isim, platform veya kategori deneyin.' : 'Yeni bir liste ekleyin veya filtrelerinizi değiştirin.'}</p><button className="primary-btn" onClick={() => setShowSource(true)}><Plus/> Kaynak ekle</button></div>}
         </section>
       </div>
     </main>
@@ -298,6 +315,13 @@ function App() {
       onProgress={saveProgress}
       onClose={closePlayer}
       onNext={playNext}
+    />}
+    {seriesTarget && <SeriesModal
+      series={seriesTarget}
+      resume={continueWatching.find((item) => item.channel.parentId === seriesTarget.id)}
+      onClose={() => setSeriesTarget(null)}
+      onLoaded={handleSeriesEpisodesLoaded}
+      onPlay={(episode) => { setSeriesTarget(null); void playChannel(episode) }}
     />}
     {showSource && <SourceModal onClose={() => setShowSource(false)} onLoaded={loadSource}/>} 
     {showSettings && <SettingsModal value={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)}/>}

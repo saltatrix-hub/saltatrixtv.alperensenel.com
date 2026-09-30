@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
 import { Cast, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
 import type { Channel } from '../types'
+import { providerUrl } from '../lib/proxy'
 
 interface Props {
   channel: Channel
@@ -55,9 +56,10 @@ export function Player({ channel, resumeAt, fullscreen, autoPlay, controlHideSec
     video.muted = muted
     video.volume = volume
     let hls: Hls | undefined
+    const playbackUrl = providerUrl(channel.url)
     if (channel.url.includes('.m3u8') && Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: isLive })
-      hls.loadSource(channel.url)
+      hls.loadSource(playbackUrl)
       hls.attachMedia(video)
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (hls && hls.audioTracks.length > 0 && hls.audioTrack < 0) hls.audioTrack = 0
@@ -70,7 +72,7 @@ export function Player({ channel, resumeAt, fullscreen, autoPlay, controlHideSec
       })
       hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setError('Yayın şu anda oynatılamıyor.') })
     } else {
-      video.src = channel.url
+      video.src = playbackUrl
       if (autoPlay) video.play().catch(() => undefined)
     }
     return () => {
@@ -158,7 +160,7 @@ export function Player({ channel, resumeAt, fullscreen, autoPlay, controlHideSec
       </div>
     </div>
     <div className="now-playing">
-      <div className="channel-avatar"><span>{channel.name.slice(0, 2).toUpperCase()}</span>{channel.logo && <img src={channel.logo} alt={`${channel.name} görseli`} referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }}/>}</div>
+      <div className="channel-avatar"><span>{channel.name.slice(0, 2).toUpperCase()}</span>{channel.logo && <img src={providerUrl(channel.logo)} alt={`${channel.name} görseli`} crossOrigin="anonymous" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }}/>}</div>
       <div><span>{channel.platform || channel.category}</span><h3>{channel.name}</h3><p>{channel.description || channel.now || (isLive ? 'Canlı yayın' : channel.genre || 'Saltatrix TV')}</p></div>
       <strong>{channel.quality || 'HD'}</strong>
     </div>
